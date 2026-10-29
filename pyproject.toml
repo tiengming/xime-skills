@@ -1,0 +1,6 @@
+[project]
+name = "xime-skills"
+version = "0.1.0"
+description = "Agent skills for contributing to the Xime marketplace"
+requires-python = ">=3.10"
+dependencies = ["PyYAML>=6"]
