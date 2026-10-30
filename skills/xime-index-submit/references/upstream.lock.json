@@ -1,0 +1,11 @@
+{
+  "repo": "ximeiorg/xime-index",
+  "commit": "06fd79c1b8754ded71d2e35c54c79efee4704ecc",
+  "fetched_at": "2026-10-30",
+  "files": {
+    "CONTRIBUTING.md": "6979b8cbcce49e5d615ff3e1490b7313596a9eb30e3f6d2d92d9aa1d8d83da77",
+    "LAYOUT_SPEC.md": "45988098ae848f422537188476e692f75833542c77b038d9c86888d551646548",
+    "scripts/ci-update.py": "2662de0e29515c4c115c968da3f1694a9014a9597c291b56bd10492a3bf4e825",
+    "scripts/lib.py": "9578f9e68eae62bf9c8d2ee75c0a4077a719db1449452e705bcbe054658a2d19"
+  }
+}
