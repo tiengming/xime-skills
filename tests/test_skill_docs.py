@@ -71,6 +71,19 @@ class ReferenceDocsTest(unittest.TestCase):
             "## 更新版本",
             "## 常见错误",
         ],
+        "plugin-v2.md": [
+            "## 包结构",
+            "## manifest 字段",
+            "## 索引字段映射",
+            "## xipm 命令",
+            "## 版本与兼容",
+            "## 常见错误",
+        ],
+        "plugin-v1.md": [
+            "## 适用范围",
+            "## 字段",
+            "## 迁移到 v2",
+        ],
     }
 
     def read(self, name):
