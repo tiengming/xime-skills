@@ -1,0 +1,20 @@
+id: demo_layout
+name: Demo Layout
+author: tester
+description: A demo layout.
+tags: [布局]
+repo: https://github.com/tester/demo-layout
+license: MIT
+appVersion: ">=3.0.0"
+requiresSchemes: []
+screenshots:
+  - https://cdn.jsdelivr.net/gh/tester/demo-layout@v1.0.0/01.png
+currentVersion: "1.0.0"
+versions:
+  - version: "1.0.0"
+    date: "2026-10-29"
+    changelog: initial
+    downloadUrl:
+      - url: https://github.com/tester/demo-layout/releases/download/v1.0.0/xime.custom.yaml
+        sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        size: "11.9 KB"
