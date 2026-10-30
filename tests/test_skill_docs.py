@@ -1,3 +1,4 @@
+import json
 import re
 import unittest
 
@@ -50,3 +51,68 @@ class TemplateTest(unittest.TestCase):
                 first = data["versions"][0]
                 for key in ("version", "date", "changelog"):
                     self.assertIn(key, first, f"{name}.yaml versions[0] missing {key}")
+
+
+class ReferenceDocsTest(unittest.TestCase):
+    HEADINGS = {
+        "index-rules.md": [
+            "## 唯一事实来源",
+            "## 五类条目",
+            "## PR 只改 src",
+            "## sha256 与 size",
+            "## 版本更新",
+            "## 常见 CI 检查",
+        ],
+        "layout.md": [
+            "## 交付形态",
+            "## zip 结构",
+            "## xime.custom.yaml 约定",
+            "## 截图规范",
+            "## 更新版本",
+            "## 常见错误",
+        ],
+    }
+
+    def read(self, name):
+        path = SKILL_ROOT / "references" / name
+        self.assertTrue(path.is_file(), f"missing reference: {path}")
+        return path, path.read_text(encoding="utf-8")
+
+    def test_required_headings(self):
+        for name, headings in self.HEADINGS.items():
+            with self.subTest(reference=name):
+                _, text = self.read(name)
+                for heading in headings:
+                    self.assertRegex(
+                        text,
+                        rf"(?m)^{re.escape(heading)}$",
+                        f"{name} missing heading {heading!r}",
+                    )
+
+    def test_relative_markdown_links_resolve(self):
+        for name in self.HEADINGS:
+            with self.subTest(reference=name):
+                path, text = self.read(name)
+                for target in re.findall(r"\[[^\]]+\]\(([^)]+)\)", text):
+                    target = target.strip()
+                    if target.startswith(
+                        ("http://", "https://", "mailto:", "#")
+                    ):
+                        continue
+                    relative = target.split("#", 1)[0]
+                    if not relative:
+                        continue
+                    resolved = (path.parent / relative).resolve()
+                    self.assertTrue(
+                        resolved.exists(),
+                        f"{name}: broken relative link {target!r}",
+                    )
+
+    def test_index_rules_pins_upstream_commit(self):
+        lock = json.loads(
+            (
+                SKILL_ROOT / "references" / "upstream.lock.json"
+            ).read_text(encoding="utf-8")
+        )
+        _, text = self.read("index-rules.md")
+        self.assertIn(lock["commit"], text)
