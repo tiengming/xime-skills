@@ -84,6 +84,21 @@ class ReferenceDocsTest(unittest.TestCase):
             "## 字段",
             "## 迁移到 v2",
         ],
+        "rime.md": [
+            "## 包结构",
+            "## id 与 schema_id",
+            "## 依赖",
+            "## 版本与下载地址",
+            "## 常见错误",
+        ],
+        "model.md": [
+            "## 两种模型",
+            "## category",
+            "## files 与 archive",
+            "## 大小计算",
+            "## .gram 例外",
+            "## 常见错误",
+        ],
     }
 
     def read(self, name):
