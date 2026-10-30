@@ -1,0 +1,33 @@
+# xime-index 插件 v2 条目模板 → src/plugins/v2/<id>.yaml
+# 文件名必须等于 id；所有字段与插件包内的 manifest.json 保持一致。
+# .xipk 由 `xipm pack` 生成（manifest.json + main.js + resources/）。
+id: "<plugin_id>"             # 与 manifest.id 一致，例如 com.example.my_plugin
+name: "<显示名称>"
+author: "<作者>"
+description: "<一段简短说明>"
+type: remote                  # 商店插件固定为 remote
+tags: [工具]                  # 工具 | 表情 | 语音 | 剪贴板同步 | 备份 | 预测
+pluginType: "<tool>"          # tool|emoji|speech|clipboard_sync|backup|prediction|unknown
+icon: "<icon.png>"            # 与 manifest.icon 一致（文字或 resources/ 文件名）
+activation: multi             # 旧字段，宿主 v3 不消费；仅 single|multi
+minHostVersion: "3.0.0"       # 与 manifest.minHostVersion 一致
+platforms: [android]          # 与 manifest.platforms 一致
+capabilities:                 # 与 manifest.capabilities 完全一致（深比较）
+  tool:
+    display: passive
+network:                      # 与 manifest.network 完全一致
+  hosts: ["api.example.com"]
+  allowCustomHosts: false
+homepage: "https://github.com/<owner>/<repo>"
+license: "<MIT>"
+appVersion: ">=3.0.0"
+currentVersion: "<0.1.0>"     # 与 manifest.version 一致
+versions:
+  - version: "<0.1.0>"
+    date: "<YYYY-MM-DD>"
+    changelog: "<本次变更>"
+    downloadUrl:
+      - url: "https://github.com/<owner>/<repo>/releases/download/<tag>/<plugin>-<version>.xipk"
+        sha256: "<64 位十六进制，用 asset_meta.py 实测>"
+        size: "<3.0 KB>"
+        sizeBytes: 3072

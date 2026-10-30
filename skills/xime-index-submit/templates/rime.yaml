@@ -1,0 +1,23 @@
+# xime-index 输入方案条目模板 → src/rimes/<id>.yaml
+# 文件名必须等于 id，且 id 必须等于 .schema.yaml 里的 schema_id。
+id: "<schema_id>"
+name: "<方案名称>"
+author: "<作者>"
+description: "<一段简短说明>"
+type: remote                  # remote | built-in
+tags: [拼音]                  # 搜索标签，例如 拼音 | 五笔 | 双拼 | 反查
+homepage: "https://github.com/<owner>/<repo>"
+license: "<GPL-3.0>"
+dependencies: []              # 依赖的其它方案 id，例如 [luna_pinyin]
+appVersion: ">=2.3.0"
+currentVersion: "<1.0.0>"
+versions:
+  - version: "<1.0.0>"
+    date: "<YYYY-MM-DD>"
+    changelog: "<本次变更>"
+    downloadUrl:
+      # Release 附件：zip / tar.gz，内含 *.schema.yaml 与 *.dict.yaml
+      - url: "https://github.com/<owner>/<repo>/releases/download/<tag>/<schema>.zip"
+        sha256: "<64 位十六进制，用 asset_meta.py 实测>"
+        size: "<1.2 MB>"
+        sizeBytes: 1258291

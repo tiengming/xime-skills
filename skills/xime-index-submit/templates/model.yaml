@@ -1,0 +1,32 @@
+# xime-index 模型条目模板 → src/models/<id>.yaml
+# 文件名必须等于 id。模型可整包 archive，也可逐文件 files；两者可并存。
+id: "<model_id>"
+name: "<模型名称>"
+author: "<作者>"
+description: "<一段简短说明>"
+category: prediction          # prediction|asr|punctuation|stroke|other（handwriting 仅兼容旧条目）
+size: "<1.00 MB>"             # 展示用总大小，建议与 sizeBytes 合计一致
+type: remote
+tags: [联想]                  # 联想 | 语音 | 标点 | 手写 | ONNX
+homepage: "https://github.com/<owner>/<repo>"
+license: "<Apache-2.0>"
+appVersion: ">=3.0.0"
+currentVersion: "<v1.0>"
+versions:
+  - version: "<v1.0>"
+    date: "<YYYY-MM-DD>"
+    changelog: "<本次变更>"
+    storageDir: ""            # 相对模型目录的子目录；无则为空字符串
+    archive:                  # 可省略：整包下载（tar.bz2 等）
+      url: "https://github.com/<owner>/<repo>/releases/download/<tag>/<model>.tar.bz2"
+      sha256: "<64 位十六进制，用 asset_meta.py 实测>"
+      size: "<1.00 MB>"
+      sizeBytes: 1048576
+    files:                    # 归档内文件清单；若单文件直链，每项补 url/sha256/size
+      - name: "model.onnx"
+      # - name: "tokens.txt"
+      #   url: "https://.../tokens.txt"
+      #   sha256: "<64 位十六进制>"
+      #   size: "<424.0 KB>"
+      #   sizeBytes: 434176
+      # .gram 文件可跳过 sha256：url 以 .gram 结尾时 sha256 允许为空。

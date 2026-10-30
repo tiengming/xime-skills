@@ -1,0 +1,27 @@
+# xime-index 布局条目模板 → src/layouts/<id>.yaml
+# 文件名必须等于 id；布局 id 只允许 [a-z0-9_]。
+id: "<layout_id>"
+name: "<显示名称>"
+author: "<作者>"
+description: "<一段简短说明>"
+tags: [布局]                  # 布局 | 配色 | 快捷键 | 输入法适配
+repo: "https://github.com/<owner>/<repo>"   # 作者仓库（内容来源）
+homepage: "https://<homepage>"              # 可选
+license: "<MIT>"              # 必填：可再分发声明，必须与仓库 LICENSE 一致
+appVersion: ">=3.0.0"         # 兼容的 App 版本，必须以 >= 开头
+requiresSchemes: []           # 依赖的输入方案 id，例如 [cangjie]
+screenshots:                  # 1~5 张，必须固定到 tag/commit（不能是分支）
+  - "https://github.com/<owner>/<repo>/releases/download/<tag>/01.png"
+warning: ""                   # 可选：应用前警告
+currentVersion: "<1.0.0>"
+versions:
+  - version: "<1.0.0>"
+    date: "<YYYY-MM-DD>"
+    changelog: "<本次变更>"
+    downloadUrl:
+      # 单文件布局：指向 Release 附件里的 xime.custom.yaml。
+      # 带 themes/ 或 fonts/：先打根级 zip，再指向该 zip。
+      - url: "https://github.com/<owner>/<repo>/releases/download/<tag>/<xime.custom.yaml|layout.zip>"
+        sha256: "<64 位十六进制，用 asset_meta.py 实测>"
+        size: "<11.9 KB>"
+        sizeBytes: 12185

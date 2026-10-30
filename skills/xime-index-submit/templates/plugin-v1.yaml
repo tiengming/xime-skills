@@ -1,0 +1,22 @@
+# xime-index 旧版插件（v1）条目模板 → src/plugins/v1/<id>.yaml
+# 仅用于维护 App < 3.0.0 的 Lua/DEX 旧插件；新插件请使用 plugin-v2.yaml。
+id: "<plugin_id>"
+name: "<显示名称>"
+author: "<作者>"
+description: "<一段简短说明>"
+type: remote
+tags: [表情]                  # 表情 | 工具 | 语音 | 剪贴板同步 | 备份
+pluginType: emoji             # tool|emoji|speech|clipboard_sync|backup|prediction|unknown
+homepage: "https://github.com/<owner>/<repo>"
+license: "<GPL-3.0>"
+appVersion: ">=2.6.0"         # 旧版宿主版本
+currentVersion: "<2.1.0>"
+versions:
+  - version: "<2.1.0>"
+    date: "<YYYY-MM-DD>"
+    changelog: "<本次变更>"
+    downloadUrl:
+      - url: "https://github.com/<owner>/<repo>/releases/download/<tag>/<plugin>-<version>.xipk"
+        sha256: "<64 位十六进制，用 asset_meta.py 实测>"
+        size: "<3.2 KB>"
+        sizeBytes: 3277
