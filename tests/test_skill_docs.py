@@ -22,6 +22,71 @@ class SkillSkeletonTest(unittest.TestCase):
         self.assertLessEqual(len(meta["description"]), 1024)
 
 
+class SkillWorkflowTest(unittest.TestCase):
+    PHASES = [
+        "## 何时使用",
+        "## 何时不要使用",
+        "## 决策树",
+        "## 阶段 0：预检",
+        "## 阶段 1：分类",
+        "## 阶段 2：产物校验",
+        "## 阶段 3：发布与取数",
+        "## 阶段 4：生成/更新条目",
+        "## 阶段 5：本地验证",
+        "## 阶段 6：提交 PR",
+        "## 阶段 7：盯 CI",
+        "## 阶段 8：合并后",
+        "## 确认门",
+        "## 红线",
+        "## 参考文件",
+        "## 脚本",
+    ]
+    REFERENCES = [
+        "index-rules.md",
+        "layout.md",
+        "plugin-v2.md",
+        "plugin-v1.md",
+        "rime.md",
+        "model.md",
+        "pr-and-ci.md",
+        "troubleshooting.md",
+    ]
+    SCRIPTS = [
+        "preflight.py",
+        "asset_meta.py",
+        "validate_entry.py",
+        "lib.py",
+    ]
+
+    def setUp(self):
+        self.text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+
+    def test_required_sections(self):
+        for heading in self.PHASES:
+            self.assertRegex(
+                self.text,
+                rf"(?m)^{re.escape(heading)}$",
+                f"SKILL.md missing heading {heading!r}",
+            )
+
+    def test_links_to_all_references_and_scripts(self):
+        for name in self.REFERENCES:
+            path = SKILL_ROOT / "references" / name
+            self.assertTrue(path.is_file(), f"missing reference: {name}")
+            self.assertIn(f"references/{name}", self.text)
+        for name in self.SCRIPTS:
+            path = SKILL_ROOT / "scripts" / name
+            self.assertTrue(path.is_file(), f"missing script: {name}")
+            self.assertIn(f"scripts/{name}", self.text)
+
+    def test_no_placeholders(self):
+        self.assertNotRegex(
+            self.text,
+            r"(?i)\b(TODO|TBD|placeholder)\b",
+            "SKILL.md still contains a placeholder marker",
+        )
+
+
 class TemplateTest(unittest.TestCase):
     TYPE_FIELDS = {
         "layout": "repo",
