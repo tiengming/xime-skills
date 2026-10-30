@@ -1,0 +1,20 @@
+id: com.example.legacy_plugin
+name: Legacy Plugin
+author: tester
+description: A legacy Lua plugin kept for old hosts.
+type: remote
+tags: [表情]
+pluginType: emoji
+homepage: https://github.com/tester/legacy-plugin
+license: GPL-3.0
+appVersion: ">=2.6.0"
+currentVersion: "2.1.0"
+versions:
+  - version: "2.1.0"
+    date: "2026-08-07"
+    changelog: legacy release
+    downloadUrl:
+      - url: https://github.com/tester/legacy-plugin/releases/download/v2.1.0/legacy-2.1.0.xipk
+        sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        size: "3.2 KB"
+        sizeBytes: 3277

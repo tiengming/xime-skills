@@ -1,0 +1,30 @@
+id: com.example.demo_plugin
+name: Demo Plugin
+author: tester
+description: A demo plugin.
+type: remote
+tags: [工具]
+pluginType: tool
+icon: icon.png
+activation: multi
+minHostVersion: "3.0.0"
+platforms: [android]
+capabilities:
+  tool:
+    display: passive
+network:
+  hosts: [api.example.com]
+  allowCustomHosts: false
+homepage: https://github.com/tester/demo-plugin
+license: MIT
+appVersion: ">=3.0.0"
+currentVersion: "0.1.0"
+versions:
+  - version: "0.1.0"
+    date: "2026-10-30"
+    changelog: initial
+    downloadUrl:
+      - url: https://github.com/tester/demo-plugin/releases/download/v0.1.0/demo-plugin-0.1.0.xipk
+        sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        size: "12.3 KB"
+        sizeBytes: 12595

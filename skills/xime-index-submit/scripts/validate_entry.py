@@ -93,6 +93,24 @@ ROOT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 THEME_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 FONT_EXTS = {".ttf", ".otf"}
 
+PLUGIN_TYPES = {
+    "tool",
+    "emoji",
+    "speech",
+    "clipboard_sync",
+    "backup",
+    "prediction",
+    "unknown",
+}
+PLUGIN_V2_ONLY_FIELDS = {
+    "icon",
+    "activation",
+    "minHostVersion",
+    "platforms",
+    "capabilities",
+    "network",
+}
+
 
 @dataclass
 class Report:
@@ -115,10 +133,30 @@ def detect_type(path: Path) -> str:
     return "unknown"
 
 
-def validate_zip(path: Path) -> tuple[list[str], list[str]]:
-    """Check a layout/plugin package: paths, symlinks and allowed layout."""
+def validate_zip(
+    path: Path,
+    required_root: str | None = "xime.custom.yaml",
+    allowed_dirs: set[str] | None = None,
+    allowed_root_files: set[str] | None = None,
+) -> tuple[list[str], list[str]]:
+    """Check package paths, symlinks and the allowed archive layout.
+
+    ``required_root`` is the file that must sit at the archive root; pass
+    ``None`` for ``.xipk`` packages. ``allowed_dirs`` defaults to
+    ``themes/`` + ``fonts/`` for layout packages and ``resources/`` for
+    plugin packages.
+    """
     errors: list[str] = []
     warnings: list[str] = []
+    if allowed_dirs is None:
+        allowed_dirs = {"themes", "fonts"} if required_root else {"resources"}
+    if allowed_root_files is None:
+        if required_root:
+            allowed_root_files = {required_root}
+        else:
+            allowed_root_files = {"manifest.json", "main.js"}
+    allowed_root_lower = {name.lower() for name in allowed_root_files}
+
     try:
         archive = zipfile.ZipFile(path)
     except (OSError, zipfile.BadZipFile) as exc:
@@ -128,7 +166,6 @@ def validate_zip(path: Path) -> tuple[list[str], list[str]]:
         infos = archive.infolist()
         names = [info.filename for info in infos]
 
-        has_root_manifest = False
         for info in infos:
             name = info.filename
             normalized = name.replace("\\", "/")
@@ -140,13 +177,13 @@ def validate_zip(path: Path) -> tuple[list[str], list[str]]:
                 errors.append(f"zip 路径不能包含 '..': {name}")
             if (info.external_attr >> 16) & 0o170000 == 0o120000:
                 errors.append(f"zip 不能包含符号链接: {name}")
-            if normalized == "xime.custom.yaml":
-                has_root_manifest = True
 
-        if not has_root_manifest:
-            errors.append(
-                "zip 根级必须包含 xime.custom.yaml（不能有顶层目录壳）"
-            )
+        if required_root:
+            normalized_names = {name.replace("\\", "/") for name in names}
+            if required_root not in normalized_names:
+                errors.append(
+                    f"zip 根级必须包含 {required_root}（不能有顶层目录壳）"
+                )
 
         for name in names:
             normalized = name.replace("\\", "/").lstrip("./")
@@ -156,7 +193,7 @@ def validate_zip(path: Path) -> tuple[list[str], list[str]]:
             suffix = Path(normalized).suffix.lower()
 
             if len(parts) == 1:
-                if parts[0] == "xime.custom.yaml":
+                if parts[0].lower() in allowed_root_lower:
                     continue
                 if parts[0].lower() in ROOT_DOCS or suffix in ROOT_IMAGE_EXTS:
                     continue
@@ -169,6 +206,8 @@ def validate_zip(path: Path) -> tuple[list[str], list[str]]:
             elif parts[0] == "fonts":
                 if len(parts) != 2 or not parts[1] or suffix not in FONT_EXTS:
                     errors.append(f"fonts/ 只允许一层 ttf/otf 文件: {name}")
+            elif parts[0] in allowed_dirs:
+                continue
             else:
                 warnings.append(f"zip 包含未预期的目录: {name}")
 
@@ -324,6 +363,27 @@ def _check_download_item(
             report.errors.append(f"版本 {label}: {context} sizeBytes 必须为正整数")
 
 
+def _check_download_versions(report: Report, data: dict[str, Any]) -> None:
+    """Validate every version's downloadUrl list; only current must be a Release."""
+    current_version = str(data.get("currentVersion"))
+    versions = data.get("versions")
+    if not isinstance(versions, list):
+        return
+    for version in versions:
+        if not isinstance(version, dict):
+            continue
+        label = str(version.get("version"))
+        is_current = label == current_version
+        download_urls = version.get("downloadUrl")
+        if not isinstance(download_urls, list) or not download_urls:
+            report.errors.append(f"版本 {label}: downloadUrl 必须是非空列表")
+            continue
+        for item in download_urls:
+            _check_download_item(
+                report, label, item, current=is_current, context="downloadUrl"
+            )
+
+
 def validate_layout(
     report: Report,
     data: dict[str, Any],
@@ -363,27 +423,184 @@ def validate_layout(
         for url in screenshots:
             _check_screenshot(report, url)
 
-    current_version = str(data.get("currentVersion"))
-    versions = data.get("versions")
-    if isinstance(versions, list):
-        for version in versions:
-            if not isinstance(version, dict):
-                continue
-            label = str(version.get("version"))
-            is_current = label == current_version
-            download_urls = version.get("downloadUrl")
-            if not isinstance(download_urls, list) or not download_urls:
-                report.errors.append(f"版本 {label}: downloadUrl 必须是非空列表")
-                continue
-            for item in download_urls:
-                _check_download_item(
-                    report, label, item, current=is_current, context="downloadUrl"
-                )
+    _check_download_versions(report, data)
 
     if asset_file is not None:
         zip_errors, zip_warnings = validate_zip(asset_file)
         report.errors.extend(zip_errors)
         report.warnings.extend(zip_warnings)
+
+
+def _strip_jsonc(text: str) -> str:
+    """Remove // and /* */ comments and trailing commas from JSONC."""
+    out: list[str] = []
+    index = 0
+    in_string = False
+    escaped = False
+    while index < len(text):
+        char = text[index]
+        if in_string:
+            out.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+        if char == '"':
+            in_string = True
+            out.append(char)
+            index += 1
+            continue
+        if char == "/" and index + 1 < len(text) and text[index + 1] == "/":
+            while index < len(text) and text[index] not in "\r\n":
+                index += 1
+            continue
+        if char == "/" and index + 1 < len(text) and text[index + 1] == "*":
+            index += 2
+            while (
+                index + 1 < len(text)
+                and not (text[index] == "*" and text[index + 1] == "/")
+            ):
+                index += 1
+            index += 2
+            continue
+        out.append(char)
+        index += 1
+    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
+
+
+def load_manifest(path: Path) -> dict[str, Any]:
+    """Load manifest.json, tolerating // comments and trailing commas."""
+    text = Path(path).read_text(encoding="utf-8")
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        data = json.loads(_strip_jsonc(text))
+    if not isinstance(data, dict):
+        raise ValueError("manifest.json 必须是 JSON 对象")
+    return data
+
+
+def _check_plugin_type(report: Report, data: dict[str, Any]) -> None:
+    plugin_type = data.get("pluginType")
+    if plugin_type is None:
+        return
+    if plugin_type not in PLUGIN_TYPES:
+        report.errors.append(
+            f"pluginType 必须是 {sorted(PLUGIN_TYPES)} 之一，当前为 {plugin_type!r}"
+        )
+
+
+def _compare_manifest(
+    report: Report, data: dict[str, Any], manifest: dict[str, Any]
+) -> None:
+    for key in ("id", "type", "version"):
+        if not manifest.get(key):
+            report.errors.append(f"manifest.json 缺少必填字段: {key}")
+
+    comparisons = [
+        ("id", "id"),
+        ("type", "pluginType"),
+        ("version", "currentVersion"),
+        ("icon", "icon"),
+        ("activation", "activation"),
+        ("minHostVersion", "minHostVersion"),
+        ("platforms", "platforms"),
+        ("capabilities", "capabilities"),
+        ("network", "network"),
+    ]
+    for manifest_key, index_key in comparisons:
+        if manifest_key not in manifest:
+            continue
+        expected = manifest[manifest_key]
+        actual = data.get(index_key)
+        if manifest_key == "version":
+            expected, actual = str(expected), str(actual)
+        if actual != expected:
+            report.errors.append(
+                f"索引字段 {index_key} 与 manifest.{manifest_key} 不一致: "
+                f"{actual!r} != {expected!r}"
+            )
+
+
+def validate_plugin_v1(report: Report, data: dict[str, Any]) -> None:
+    report.warnings.append(
+        "legacy plugin index; new plugins should use v2"
+        "（v1 仅维护旧版 Lua/DEX 插件）"
+    )
+    _check_plugin_type(report, data)
+    for field in sorted(PLUGIN_V2_ONLY_FIELDS & set(data)):
+        report.warnings.append(f"v1 条目不应包含 v2 字段 {field!r}")
+    _check_download_versions(report, data)
+
+
+def validate_plugin_v2(
+    report: Report,
+    data: dict[str, Any],
+    *,
+    manifest_path: Path | None = None,
+    asset_file: Path | None = None,
+) -> None:
+    _check_plugin_type(report, data)
+
+    activation = data.get("activation")
+    if activation is not None and activation not in {"single", "multi"}:
+        report.errors.append(
+            f"activation 必须是 single 或 multi，当前为 {activation!r}"
+        )
+    if "activation" in data:
+        report.warnings.append(
+            "activation 是旧字段，宿主 v3 不消费；激活方式由 pluginType 推导"
+        )
+
+    platforms = data.get("platforms")
+    if not isinstance(platforms, list) or not platforms:
+        report.errors.append("platforms 必须是非空列表（例如 [android]）")
+
+    min_host = data.get("minHostVersion")
+    if min_host is None:
+        report.warnings.append(
+            "建议填写 minHostVersion（与 manifest.json 保持一致）"
+        )
+    elif not isinstance(min_host, str):
+        report.errors.append("minHostVersion 必须是字符串")
+
+    icon = data.get("icon")
+    if icon is not None and not isinstance(icon, str):
+        report.errors.append("icon 必须是字符串")
+
+    _check_download_versions(report, data)
+
+    if manifest_path is None:
+        report.warnings.append(
+            "未提供 --manifest，无法校验索引与 manifest.json 是否一致"
+        )
+    else:
+        try:
+            manifest = load_manifest(manifest_path)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            report.errors.append(f"无法解析 manifest.json: {exc}")
+        else:
+            _compare_manifest(report, data, manifest)
+
+    if asset_file is not None:
+        zip_errors, zip_warnings = validate_zip(
+            asset_file, required_root=None, allowed_dirs={"resources"}
+        )
+        report.errors.extend(zip_errors)
+        report.warnings.extend(zip_warnings)
+        try:
+            with zipfile.ZipFile(asset_file) as archive:
+                names = set(archive.namelist())
+        except (OSError, zipfile.BadZipFile):
+            names = None
+        if names is not None:
+            for required in ("manifest.json", "main.js"):
+                if required not in names:
+                    report.errors.append(f".xipk 缺少 {required}")
 
 
 def _check_all_urls(report: Report, data: dict[str, Any]) -> None:
@@ -419,6 +636,7 @@ def validate(
     repo_root: Path | None = None,
     asset_file: Path | None = None,
     check_urls: bool = False,
+    manifest_path: Path | None = None,
 ) -> Report:
     """Validate one entry file and return a Report."""
     path = Path(path)
@@ -448,7 +666,16 @@ def validate(
 
     if report.type == "layout":
         validate_layout(report, data, asset_file=asset_file)
-    elif report.type in ALLOWED_FIELDS:
+    elif report.type == "plugin-v2":
+        validate_plugin_v2(
+            report,
+            data,
+            manifest_path=manifest_path,
+            asset_file=asset_file,
+        )
+    elif report.type == "plugin-v1":
+        validate_plugin_v1(report, data)
+    elif report.type in {"rime", "model"}:
         report.warnings.append(
             f"{report.type} 类型的完整校验尚未实现（后续任务补充）"
         )
@@ -464,6 +691,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("path", help="entry YAML file")
     parser.add_argument("--repo-root", help="path to the xime-index checkout")
     parser.add_argument("--asset-file", help="layout/plugin package to inspect")
+    parser.add_argument("--manifest", help="plugin manifest.json to cross-check")
     parser.add_argument("--check-urls", action="store_true")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
@@ -478,6 +706,7 @@ def main(argv: list[str] | None = None) -> int:
         repo_root=Path(args.repo_root) if args.repo_root else None,
         asset_file=Path(args.asset_file) if args.asset_file else None,
         check_urls=args.check_urls,
+        manifest_path=Path(args.manifest) if args.manifest else None,
     )
 
     if args.json:

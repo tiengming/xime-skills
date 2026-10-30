@@ -347,5 +347,174 @@ class CliTest(unittest.TestCase):
         self.assertTrue(payload["warnings"])
 
 
+PLUGIN_V2_ID = "com.example.demo_plugin"
+PLUGIN_V1_ID = "com.example.legacy_plugin"
+PLUGIN_V2_YAML = FIXTURES / "plugin-v2" / "valid.yaml"
+PLUGIN_V2_MANIFEST = FIXTURES / "plugin-v2" / "manifest.json"
+PLUGIN_V1_YAML = FIXTURES / "plugin-v1" / "valid.yaml"
+
+
+def plugin_v2_data():
+    return yaml.safe_load(PLUGIN_V2_YAML.read_text(encoding="utf-8"))
+
+
+def plugin_v1_data():
+    return yaml.safe_load(PLUGIN_V1_YAML.read_text(encoding="utf-8"))
+
+
+def plugin_v2_manifest():
+    return json.loads(PLUGIN_V2_MANIFEST.read_text(encoding="utf-8"))
+
+
+class PluginValidationTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        (self.root / "src" / "plugins" / "v2").mkdir(parents=True)
+        (self.root / "src" / "plugins" / "v1").mkdir(parents=True)
+
+    def write(self, data, rel, filename):
+        path = self.root / rel / filename
+        path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+        return path
+
+    def run_v2(self, data=None, manifest=None, asset_file=None):
+        data = data if data is not None else plugin_v2_data()
+        path = self.write(data, "src/plugins/v2", f"{data['id']}.yaml")
+        manifest_path = None
+        if manifest is not False:
+            manifest = manifest if manifest is not None else plugin_v2_manifest()
+            manifest_path = self.root / "manifest.json"
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False), encoding="utf-8"
+            )
+        return validate(
+            path,
+            repo_root=self.root,
+            asset_file=asset_file,
+            manifest_path=manifest_path,
+        )
+
+    def make_xipk(self, entries):
+        path = self.root / "demo.xipk"
+        with zipfile.ZipFile(path, "w") as zf:
+            for name, payload in entries:
+                zf.writestr(name, payload)
+        return path
+
+    def test_valid_v2_with_matching_manifest(self):
+        report = self.run_v2()
+        self.assertEqual(report.errors, [])
+        self.assertEqual(report.type, "plugin-v2")
+        self.assertTrue(any("activation" in w for w in report.warnings))
+
+    def test_manifest_type_mismatch(self):
+        manifest = plugin_v2_manifest()
+        manifest["type"] = "emoji"
+        report = self.run_v2(manifest=manifest)
+        self.assertTrue(any("pluginType" in e for e in report.errors))
+
+    def test_manifest_version_mismatch(self):
+        manifest = plugin_v2_manifest()
+        manifest["version"] = "0.2.0"
+        report = self.run_v2(manifest=manifest)
+        self.assertTrue(any("currentVersion" in e or "version" in e for e in report.errors))
+
+    def test_manifest_platforms_mismatch(self):
+        manifest = plugin_v2_manifest()
+        manifest["platforms"] = ["ios"]
+        report = self.run_v2(manifest=manifest)
+        self.assertTrue(any("platforms" in e for e in report.errors))
+
+    def test_manifest_icon_mismatch(self):
+        manifest = plugin_v2_manifest()
+        manifest["icon"] = "other.png"
+        report = self.run_v2(manifest=manifest)
+        self.assertTrue(any("icon" in e for e in report.errors))
+
+    def test_missing_plugin_type(self):
+        data = plugin_v2_data()
+        del data["pluginType"]
+        report = self.run_v2(data)
+        self.assertTrue(any("pluginType" in e for e in report.errors))
+
+    def test_unknown_plugin_type(self):
+        data = plugin_v2_data()
+        data["pluginType"] = "weird"
+        report = self.run_v2(data)
+        self.assertTrue(any("pluginType" in e for e in report.errors))
+
+    def test_bad_activation(self):
+        data = plugin_v2_data()
+        data["activation"] = "always"
+        report = self.run_v2(data)
+        self.assertTrue(any("activation" in e for e in report.errors))
+
+    def test_empty_platforms(self):
+        data = plugin_v2_data()
+        data["platforms"] = []
+        report = self.run_v2(data)
+        self.assertTrue(any("platforms" in e for e in report.errors))
+
+    def test_xipk_without_main_js(self):
+        asset = self.make_xipk([("manifest.json", "{}")])
+        report = self.run_v2(asset_file=asset)
+        self.assertTrue(any("main.js" in e for e in report.errors))
+
+    def test_xipk_with_traversal(self):
+        asset = self.make_xipk(
+            [
+                ("manifest.json", "{}"),
+                ("main.js", "var plugin = {};"),
+                ("../evil.txt", "x"),
+            ]
+        )
+        report = self.run_v2(asset_file=asset)
+        self.assertTrue(any(".." in e for e in report.errors))
+
+    def test_valid_xipk_structure(self):
+        asset = self.make_xipk(
+            [
+                ("manifest.json", "{}"),
+                ("main.js", "var plugin = {};"),
+                ("resources/icon.png", b"png"),
+            ]
+        )
+        report = self.run_v2(asset_file=asset)
+        self.assertEqual(report.errors, [])
+
+    def test_v1_entry_warns_legacy(self):
+        data = plugin_v1_data()
+        path = self.write(data, "src/plugins/v1", f"{data['id']}.yaml")
+        report = validate(path, repo_root=self.root)
+        self.assertEqual(report.errors, [])
+        self.assertTrue(
+            any(
+                "legacy plugin index; new plugins should use v2" in w
+                for w in report.warnings
+            )
+        )
+
+    def test_cli_manifest_mismatch_exits_one(self):
+        data = plugin_v2_data()
+        path = self.write(data, "src/plugins/v2", f"{data['id']}.yaml")
+        manifest = plugin_v2_manifest()
+        manifest["type"] = "emoji"
+        manifest_path = self.root / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = validate_main(
+                [
+                    str(path),
+                    "--repo-root",
+                    str(self.root),
+                    "--manifest",
+                    str(manifest_path),
+                ]
+            )
+        self.assertEqual(rc, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

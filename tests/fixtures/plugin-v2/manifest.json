@@ -1,0 +1,20 @@
+{
+  "id": "com.example.demo_plugin",
+  "name": "Demo Plugin",
+  "description": "A demo plugin.",
+  "version": "0.1.0",
+  "type": "tool",
+  "entry": "main.js",
+  "icon": "icon.png",
+  "platforms": ["android"],
+  "minHostVersion": "3.0.0",
+  "capabilities": {
+    "tool": {
+      "display": "passive"
+    }
+  },
+  "network": {
+    "hosts": ["api.example.com"],
+    "allowCustomHosts": false
+  }
+}
