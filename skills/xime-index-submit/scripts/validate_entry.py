@@ -25,7 +25,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib import USER_AGENT, classify_url  # noqa: E402
+from lib import USER_AGENT, classify_url, human_size  # noqa: E402
 
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$", re.IGNORECASE)
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -110,6 +110,18 @@ PLUGIN_V2_ONLY_FIELDS = {
     "capabilities",
     "network",
 }
+
+RIME_TYPES = {"remote", "built-in"}
+MODEL_CATEGORIES = {
+    "prediction",
+    "asr",
+    "punctuation",
+    "stroke",
+    "other",
+    "handwriting",
+}
+SIZE_RE = re.compile(r"^([\d.]+)\s*(B|KB|MB|GB)$", re.IGNORECASE)
+SIZE_UNITS = {"B": 1, "KB": 1024, "MB": 1024**2, "GB": 1024**3}
 
 
 @dataclass
@@ -603,6 +615,211 @@ def validate_plugin_v2(
                     report.errors.append(f".xipk 缺少 {required}")
 
 
+def _parse_size(value: Any) -> float | None:
+    if not isinstance(value, str):
+        return None
+    match = SIZE_RE.match(value.strip())
+    if not match:
+        return None
+    try:
+        number = float(match.group(1))
+    except ValueError:
+        return None
+    return number * SIZE_UNITS[match.group(2).upper()]
+
+
+def validate_rime(
+    report: Report,
+    data: dict[str, Any],
+    *,
+    schema_path: Path | None = None,
+) -> None:
+    rime_type = data.get("type")
+    if rime_type is not None and rime_type not in RIME_TYPES:
+        report.errors.append(
+            f"type 必须是 remote 或 built-in，当前为 {rime_type!r}"
+        )
+
+    dependencies = data.get("dependencies")
+    if not isinstance(dependencies, list):
+        report.errors.append("dependencies 必须是列表")
+    else:
+        for dependency in dependencies:
+            if not isinstance(dependency, str) or not dependency.strip():
+                report.errors.append(
+                    f"dependencies 只能包含非空字符串，当前包含 {dependency!r}"
+                )
+
+    app_version = data.get("appVersion")
+    if app_version and not str(app_version).startswith(">="):
+        report.errors.append(f"appVersion 必须以 >= 开头: {app_version}")
+
+    _check_download_versions(report, data)
+
+    versions = data.get("versions")
+    if isinstance(versions, list):
+        for version in versions:
+            if not isinstance(version, dict):
+                continue
+            label = str(version.get("version"))
+            if label in {"main", "master"}:
+                report.warnings.append(
+                    f"版本 {label}: mutable branch version"
+                    "（新条目请使用不可变版本号，如 1.0.0）"
+                )
+
+    if schema_path is None:
+        report.warnings.append(
+            "未提供 --schema，无法校验 schema_id 与 id 是否一致"
+        )
+        return
+    try:
+        schema = yaml.safe_load(Path(schema_path).read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        report.errors.append(f"无法解析 schema 文件: {exc}")
+        return
+    if not isinstance(schema, dict) or not schema.get("schema_id"):
+        report.errors.append("schema 文件缺少 schema_id")
+    elif str(schema["schema_id"]) != report.id:
+        report.errors.append(
+            f"schema_id 与 id 不一致: {schema['schema_id']!r} != {report.id!r}"
+        )
+
+
+def _check_size_bytes(
+    report: Report, label: str, context: str, value: Any
+) -> int | None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        report.errors.append(f"版本 {label}: {context} sizeBytes 必须是整数")
+        return None
+    if value <= 0:
+        report.errors.append(f"版本 {label}: {context} sizeBytes 必须为正整数")
+        return None
+    return value
+
+
+def validate_model(report: Report, data: dict[str, Any]) -> None:
+    category = data.get("category")
+    if category is not None:
+        if category not in MODEL_CATEGORIES:
+            report.errors.append(
+                f"category 必须是 {sorted(MODEL_CATEGORIES)} 之一，"
+                f"当前为 {category!r}"
+            )
+        elif category == "handwriting":
+            report.warnings.append(
+                "category handwriting 未在文档枚举中（现有索引使用，保留兼容）"
+            )
+
+    top_size = data.get("size")
+    parsed_size = _parse_size(top_size)
+    if top_size and parsed_size is None:
+        report.warnings.append(
+            f"size 格式无法解析: {top_size!r}（示例：133.90MB / 7.00 MB）"
+        )
+
+    versions = data.get("versions")
+    if not isinstance(versions, list):
+        return
+    for version in versions:
+        if not isinstance(version, dict):
+            continue
+        label = str(version.get("version"))
+
+        storage_dir = version.get("storageDir", "")
+        if not isinstance(storage_dir, str):
+            report.errors.append(f"版本 {label}: storageDir 必须是字符串")
+
+        archive = version.get("archive")
+        files = version.get("files")
+        if archive is None and not files:
+            report.errors.append(f"版本 {label}: 必须提供 archive 或 files")
+
+        size_bytes_values: list[int] = []
+
+        if archive is not None:
+            if not isinstance(archive, dict):
+                report.errors.append(f"版本 {label}: archive 必须是映射")
+            else:
+                url = archive.get("url")
+                if not isinstance(url, str) or not url.startswith("https://"):
+                    report.errors.append(
+                        f"版本 {label}: archive.url 必须是 HTTPS URL"
+                    )
+                sha256 = archive.get("sha256")
+                if not sha256:
+                    report.errors.append(f"版本 {label}: archive 缺少 sha256")
+                elif not HEX64_RE.match(str(sha256)):
+                    report.errors.append(
+                        f"版本 {label}: archive sha256 必须是 64 位十六进制"
+                    )
+                if not archive.get("size"):
+                    report.errors.append(f"版本 {label}: archive 缺少 size")
+                if "sizeBytes" in archive:
+                    checked = _check_size_bytes(
+                        report, label, "archive", archive["sizeBytes"]
+                    )
+                    if checked is not None:
+                        size_bytes_values.append(checked)
+
+        if files is not None:
+            if not isinstance(files, list):
+                report.errors.append(f"版本 {label}: files 必须是列表")
+            else:
+                for index, file in enumerate(files):
+                    if not isinstance(file, dict) or not file.get("name"):
+                        report.errors.append(
+                            f"版本 {label}: files[{index}] 缺少 name"
+                        )
+                        continue
+                    name = file["name"]
+                    file_url = file.get("url")
+                    if file_url:
+                        if not isinstance(file_url, str) or not file_url.startswith(
+                            "https://"
+                        ):
+                            report.errors.append(
+                                f"版本 {label}: 文件 {name} 的 url 必须是 HTTPS"
+                            )
+                        is_gram = (
+                            isinstance(file_url, str)
+                            and file_url.lower().split("?", 1)[0].endswith(".gram")
+                        )
+                        sha256 = file.get("sha256")
+                        if is_gram and not sha256:
+                            report.warnings.append(
+                                f"版本 {label}: 文件 {name} 是 .gram，"
+                                "跳过 sha256 校验"
+                            )
+                        elif not sha256:
+                            report.errors.append(
+                                f"版本 {label}: 文件 {name} 缺少 sha256"
+                            )
+                        elif not HEX64_RE.match(str(sha256)):
+                            report.errors.append(
+                                f"版本 {label}: 文件 {name} 的 sha256 "
+                                "必须是 64 位十六进制"
+                            )
+                        if not file.get("size"):
+                            report.errors.append(
+                                f"版本 {label}: 文件 {name} 缺少 size"
+                            )
+                    if "sizeBytes" in file:
+                        checked = _check_size_bytes(
+                            report, label, f"文件 {name}", file["sizeBytes"]
+                        )
+                        if checked is not None:
+                            size_bytes_values.append(checked)
+
+        if parsed_size and size_bytes_values:
+            total = sum(size_bytes_values)
+            if abs(total - parsed_size) / parsed_size > 0.01:
+                report.warnings.append(
+                    f"版本 {label}: size {top_size} 与 sizeBytes 合计 "
+                    f"{human_size(total)} 不一致"
+                )
+
+
 def _check_all_urls(report: Report, data: dict[str, Any]) -> None:
     urls: list[str] = []
     screenshots = data.get("screenshots")
@@ -616,6 +833,12 @@ def _check_all_urls(report: Report, data: dict[str, Any]) -> None:
             for item in version.get("downloadUrl") or []:
                 if isinstance(item, dict) and item.get("url"):
                     urls.append(str(item["url"]))
+            archive = version.get("archive")
+            if isinstance(archive, dict) and archive.get("url"):
+                urls.append(str(archive["url"]))
+            for file in version.get("files") or []:
+                if isinstance(file, dict) and file.get("url"):
+                    urls.append(str(file["url"]))
 
     seen: set[str] = set()
     for url in urls:
@@ -637,6 +860,7 @@ def validate(
     asset_file: Path | None = None,
     check_urls: bool = False,
     manifest_path: Path | None = None,
+    schema_path: Path | None = None,
 ) -> Report:
     """Validate one entry file and return a Report."""
     path = Path(path)
@@ -675,10 +899,10 @@ def validate(
         )
     elif report.type == "plugin-v1":
         validate_plugin_v1(report, data)
-    elif report.type in {"rime", "model"}:
-        report.warnings.append(
-            f"{report.type} 类型的完整校验尚未实现（后续任务补充）"
-        )
+    elif report.type == "rime":
+        validate_rime(report, data, schema_path=schema_path)
+    elif report.type == "model":
+        validate_model(report, data)
 
     if check_urls:
         _check_all_urls(report, data)
@@ -692,6 +916,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo-root", help="path to the xime-index checkout")
     parser.add_argument("--asset-file", help="layout/plugin package to inspect")
     parser.add_argument("--manifest", help="plugin manifest.json to cross-check")
+    parser.add_argument("--schema", help="Rime .schema.yaml to cross-check")
     parser.add_argument("--check-urls", action="store_true")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
@@ -707,6 +932,7 @@ def main(argv: list[str] | None = None) -> int:
         asset_file=Path(args.asset_file) if args.asset_file else None,
         check_urls=args.check_urls,
         manifest_path=Path(args.manifest) if args.manifest else None,
+        schema_path=Path(args.schema) if args.schema else None,
     )
 
     if args.json:

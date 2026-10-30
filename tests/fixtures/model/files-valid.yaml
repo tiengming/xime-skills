@@ -1,0 +1,28 @@
+id: demo_model
+name: Demo Model
+author: tester
+description: A demo model distributed as individual files.
+category: prediction
+size: 1.00 MB
+type: remote
+tags: [联想]
+homepage: https://github.com/tester/demo-model
+license: MIT
+appVersion: ">=3.0.0"
+currentVersion: v1.0
+versions:
+  - version: v1.0
+    date: "2026-10-30"
+    changelog: initial
+    storageDir: ""
+    files:
+      - name: model.onnx
+        url: https://github.com/tester/demo-model/releases/download/v1.0.0/model.onnx
+        sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        size: 600.0 KB
+        sizeBytes: 614400
+      - name: tokens.txt
+        url: https://github.com/tester/demo-model/releases/download/v1.0.0/tokens.txt
+        sha256: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+        size: 424.0 KB
+        sizeBytes: 434176

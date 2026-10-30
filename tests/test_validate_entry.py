@@ -516,5 +516,169 @@ class PluginValidationTest(unittest.TestCase):
         self.assertEqual(rc, 1)
 
 
+RIME_YAML = FIXTURES / "rime" / "valid.yaml"
+RIME_SCHEMA = FIXTURES / "rime" / "demo.schema.yaml"
+MODEL_FILES_YAML = FIXTURES / "model" / "files-valid.yaml"
+MODEL_ARCHIVE_YAML = FIXTURES / "model" / "archive-valid.yaml"
+
+
+def rime_data():
+    return yaml.safe_load(RIME_YAML.read_text(encoding="utf-8"))
+
+
+def rime_schema():
+    return yaml.safe_load(RIME_SCHEMA.read_text(encoding="utf-8"))
+
+
+def model_files_data():
+    return yaml.safe_load(MODEL_FILES_YAML.read_text(encoding="utf-8"))
+
+
+def model_archive_data():
+    return yaml.safe_load(MODEL_ARCHIVE_YAML.read_text(encoding="utf-8"))
+
+
+class RimeValidationTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        (self.root / "src" / "rimes").mkdir(parents=True)
+
+    def write(self, data):
+        path = self.root / "src" / "rimes" / f"{data['id']}.yaml"
+        path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+        return path
+
+    def run_validate(self, data=None, schema=None):
+        data = data if data is not None else rime_data()
+        path = self.write(data)
+        schema_path = None
+        if schema is not None:
+            schema_path = self.root / "demo.schema.yaml"
+            schema_path.write_text(
+                yaml.safe_dump(schema, allow_unicode=True), encoding="utf-8"
+            )
+        return validate(path, repo_root=self.root, schema_path=schema_path)
+
+    def test_valid_rime_entry(self):
+        report = self.run_validate()
+        self.assertEqual(report.type, "rime")
+        self.assertEqual(report.errors, [])
+
+    def test_schema_id_mismatch(self):
+        data = rime_data()
+        data["id"] = "other_schema"
+        report = self.run_validate(data, schema=rime_schema())
+        self.assertTrue(any("schema_id" in e for e in report.errors))
+
+    def test_schema_without_schema_id(self):
+        data = rime_data()
+        schema = rime_schema()
+        del schema["schema_id"]
+        report = self.run_validate(data, schema=schema)
+        self.assertTrue(any("schema_id" in e for e in report.errors))
+
+    def test_dependencies_must_be_list(self):
+        data = rime_data()
+        data["dependencies"] = "demo_dep"
+        report = self.run_validate(data)
+        self.assertTrue(any("dependencies" in e for e in report.errors))
+
+    def test_mutable_branch_version_warns(self):
+        data = rime_data()
+        data["currentVersion"] = "main"
+        data["versions"][0]["version"] = "main"
+        report = self.run_validate(data)
+        self.assertTrue(
+            any("mutable branch version" in w for w in report.warnings)
+        )
+
+    def test_cli_schema_mismatch_exits_one(self):
+        data = rime_data()
+        data["id"] = "other_schema"
+        path = self.write(data)
+        schema_path = self.root / "demo.schema.yaml"
+        schema_path.write_text(
+            yaml.safe_dump(rime_schema(), allow_unicode=True), encoding="utf-8"
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = validate_main(
+                [
+                    str(path),
+                    "--repo-root",
+                    str(self.root),
+                    "--schema",
+                    str(schema_path),
+                ]
+            )
+        self.assertEqual(rc, 1)
+
+
+class ModelValidationTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        (self.root / "src" / "models").mkdir(parents=True)
+
+    def run_validate(self, data):
+        path = self.root / "src" / "models" / f"{data['id']}.yaml"
+        path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+        return validate(path, repo_root=self.root)
+
+    def test_file_list_model(self):
+        report = self.run_validate(model_files_data())
+        self.assertEqual(report.errors, [])
+        self.assertFalse(any("sizeBytes" in w for w in report.warnings))
+
+    def test_archive_model(self):
+        report = self.run_validate(model_archive_data())
+        self.assertEqual(report.errors, [])
+
+    def test_unknown_category(self):
+        data = model_files_data()
+        data["category"] = "nope"
+        report = self.run_validate(data)
+        self.assertTrue(any("category" in e for e in report.errors))
+
+    def test_handwriting_category_warns(self):
+        data = model_files_data()
+        data["category"] = "handwriting"
+        report = self.run_validate(data)
+        self.assertEqual(report.errors, [])
+        self.assertTrue(any("handwriting" in w for w in report.warnings))
+
+    def test_needs_archive_or_files(self):
+        data = model_files_data()
+        del data["versions"][0]["files"]
+        report = self.run_validate(data)
+        self.assertTrue(
+            any("archive" in e or "files" in e for e in report.errors)
+        )
+
+    def test_gram_file_skips_sha256_with_warning(self):
+        data = model_files_data()
+        data["versions"][0]["files"][0]["url"] = (
+            "https://github.com/tester/demo-model/releases/download/v1.0.0/model.gram"
+        )
+        data["versions"][0]["files"][0]["sha256"] = ""
+        report = self.run_validate(data)
+        self.assertEqual(report.errors, [])
+        self.assertTrue(any(".gram" in w for w in report.warnings))
+
+    def test_size_mismatch_warns(self):
+        data = model_files_data()
+        data["size"] = "2.00 MB"
+        report = self.run_validate(data)
+        self.assertTrue(any("sizeBytes" in w for w in report.warnings))
+
+    def test_missing_file_sha256_is_error(self):
+        data = model_files_data()
+        del data["versions"][0]["files"][0]["sha256"]
+        report = self.run_validate(data)
+        self.assertTrue(any("sha256" in e for e in report.errors))
+
+
 if __name__ == "__main__":
     unittest.main()
