@@ -335,6 +335,9 @@ def _check_download_item(
         return
 
     url = item.get("url")
+    is_gram = isinstance(url, str) and url.lower().split("?", 1)[0].endswith(
+        ".gram"
+    )
     if not isinstance(url, str) or not url:
         report.errors.append(f"版本 {label}: {context} 缺少 url")
     elif not url.startswith("https://"):
@@ -353,7 +356,12 @@ def _check_download_item(
 
     sha256 = item.get("sha256")
     if not sha256:
-        report.errors.append(f"版本 {label}: {context} 缺少 sha256")
+        if is_gram:
+            report.warnings.append(
+                f"版本 {label}: {context} 是 .gram，跳过 sha256 校验"
+            )
+        else:
+            report.errors.append(f"版本 {label}: {context} 缺少 sha256")
     elif not HEX64_RE.match(str(sha256)):
         report.errors.append(
             f"版本 {label}: {context} sha256 必须是 64 位十六进制"

@@ -594,6 +594,21 @@ class RimeValidationTest(unittest.TestCase):
             any("mutable branch version" in w for w in report.warnings)
         )
 
+    def test_gram_download_without_sha256_is_allowed(self):
+        data = rime_data()
+        data["versions"][0]["downloadUrl"].append(
+            {
+                "url": "https://github.com/tester/demo-schema/releases/"
+                "download/v1.0.0/model.gram",
+                "sha256": "",
+                "size": "380 MB",
+                "sizeBytes": 398458880,
+            }
+        )
+        report = self.run_validate(data)
+        self.assertEqual(report.errors, [])
+        self.assertTrue(any(".gram" in w for w in report.warnings))
+
     def test_cli_schema_mismatch_exits_one(self):
         data = rime_data()
         data["id"] = "other_schema"
