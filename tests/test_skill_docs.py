@@ -99,6 +99,24 @@ class ReferenceDocsTest(unittest.TestCase):
             "## .gram 例外",
             "## 常见错误",
         ],
+        "pr-and-ci.md": [
+            "## 前置",
+            "## 分支与提交",
+            "## PR 标题与正文",
+            "## 有 gh",
+            "## 无 gh",
+            "## 盯 CI",
+            "## 合并后",
+        ],
+        "troubleshooting.md": [
+            "## sha256 不一致",
+            "## 链接 404",
+            "## id 与文件名不一致",
+            "## 截图被拒",
+            "## 误改生成索引",
+            "## v1/v2 混淆",
+            "## 版本未递增",
+        ],
     }
 
     def read(self, name):
