@@ -25,7 +25,13 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib import USER_AGENT, classify_url, human_size  # noqa: E402
+from lib import (  # noqa: E402
+    USER_AGENT,
+    classify_url,
+    human_size,
+    is_network_error_text,
+    print_network_hint,
+)
 
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$", re.IGNORECASE)
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -869,6 +875,7 @@ def _check_all_urls(report: Report, data: dict[str, Any]) -> None:
                     urls.append(str(file["url"]))
 
     seen: set[str] = set()
+    blocked: str | None = None
     for url in urls:
         if url in seen:
             continue
@@ -878,8 +885,13 @@ def _check_all_urls(report: Report, data: dict[str, Any]) -> None:
             report.errors.append(f"URL 无法访问（HTTP {status}）: {url}")
         elif status is None:
             report.warnings.append(f"URL 探测失败（网络错误）: {url} ({error})")
+            if blocked is None and is_network_error_text(error):
+                blocked = error
         elif status >= 400:
             report.warnings.append(f"URL 返回 HTTP {status}: {url}")
+
+    if blocked is not None:
+        print_network_hint(blocked)
 
 
 def validate(

@@ -1,3 +1,4 @@
+import socket
 import subprocess
 import threading
 import time
@@ -7,6 +8,17 @@ from pathlib import Path
 SKILL_ROOT = Path(__file__).resolve().parents[1] / "skills" / "xime-index-submit"
 
 ASSET_BYTES = b"xime" * 1000
+
+
+def closed_port_url(path="/asset.bin"):
+    """Return a localhost URL whose port is closed (connection refused)."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    finally:
+        sock.close()
+    return f"http://127.0.0.1:{port}{path}"
 
 
 def run_cli(args, cwd=None):

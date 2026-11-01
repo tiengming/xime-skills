@@ -23,7 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib import USER_AGENT  # noqa: E402
+from lib import USER_AGENT, is_network_error, print_network_hint  # noqa: E402
 
 UPSTREAM_REPO = "ximeiorg/xime-index"
 UPSTREAM_BRANCH = "main"
@@ -122,11 +122,21 @@ def check_rules(
     lock_path = Path(lock_path) if lock_path is not None else DEFAULT_LOCK_PATH
 
     fetched: dict[str, bytes] = {}
+    blocked: str | None = None
     for rel in RULE_FILES:
         try:
             fetched[rel] = _fetch(f"{RAW_BASE}/{rel}", timeout=timeout)
         except Exception as exc:  # noqa: BLE001 - report, do not crash
             warnings.append(f"无法获取上游规则 {rel}: {exc}")
+            if blocked is None and is_network_error(exc):
+                blocked = str(exc)
+
+    if blocked is not None:
+        warnings.append(
+            "网络请求失败，疑似网络受阻；如需代理请先设置 "
+            "http_proxy/https_proxy 再重试（详见下方提示）"
+        )
+        print_network_hint(blocked)
 
     if write_lock:
         if len(fetched) != len(RULE_FILES):

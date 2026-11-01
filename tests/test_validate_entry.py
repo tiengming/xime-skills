@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from tests.helpers import HTTPFixture, SKILL_ROOT
+from tests.helpers import HTTPFixture, SKILL_ROOT, closed_port_url
 
 sys.path.insert(0, str(SKILL_ROOT / "scripts"))
 
@@ -597,8 +597,20 @@ class RimeValidationTest(unittest.TestCase):
         report = self.run_validate(data, schema=schema)
         self.assertTrue(any("schema_id" in e for e in report.errors))
 
+    def test_check_urls_network_failure_suggests_proxy(self):
+        data = rime_data()
+        data["versions"][0]["downloadUrl"][0]["url"] = closed_port_url()
+        path = self.write(data)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            report = validate(path, repo_root=self.root, check_urls=True)
+        self.assertTrue(any("网络错误" in w for w in report.warnings))
+        self.assertIn("代理", err.getvalue())
+
+
     def test_dependencies_must_be_list(self):
         data = rime_data()
+
         data["dependencies"] = "demo_dep"
         report = self.run_validate(data)
         self.assertTrue(any("dependencies" in e for e in report.errors))

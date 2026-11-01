@@ -140,6 +140,7 @@ class PreflightTest(unittest.TestCase):
 
     def test_changed_layout_spec_warns_and_exits_three(self):
         repo = self.make_repo()
+
         with mock.patch(
             "urllib.request.urlopen", side_effect=fake_urlopen_factory(DEFAULT_RULES)
         ):
@@ -185,13 +186,15 @@ class PreflightTest(unittest.TestCase):
 
     def test_network_failure_warns_not_crash(self):
         repo = self.make_repo()
+        err = io.StringIO()
         with mock.patch(
             "urllib.request.urlopen",
             side_effect=urllib.error.URLError("no network"),
-        ):
+        ), contextlib.redirect_stderr(err):
             errors, warnings = check_rules(repo, lock_path=self.lock_path)
         self.assertEqual(errors, [])
-        self.assertTrue(warnings)
+        self.assertTrue(any("网络受阻" in w for w in warnings))
+        self.assertIn("代理", err.getvalue())
 
     def test_missing_required_tool_is_error(self):
         repo = self.make_repo()
