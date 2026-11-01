@@ -1,6 +1,10 @@
 # Xime Skills
 
+[![Validate](https://github.com/tiengming/xime-skills/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/tiengming/xime-skills/actions/workflows/validate.yml)
+
 面向 Xime 扩展生态的 Agent Skills。当前包含一个技能：**`xime-index-submit`**，把“自制布局/配色、插件、输入方案、模型 → 作者仓库 Release → `xime-index` 条目 → PR → CI”的流程固化下来。
+
+仓库：<https://github.com/tiengming/xime-skills>
 
 ## 安装
 
