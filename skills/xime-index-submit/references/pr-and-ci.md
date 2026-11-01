@@ -15,6 +15,7 @@
 - [ ] `currentVersion`、`versions[0].version`、Release 附件、插件 manifest 版本一致。
 - [ ] 历史版本记录和旧 Release 附件都保留。
 - [ ] 已运行 `preflight.py --check-rules`，没有未处理的上游规则漂移。
+- [ ] 已确认 `gh` 状态：能调用、已登录、scope 足够；缺失时按提示询问用户是否安装/登录。
 - [ ] 用户已明确同意推送分支和创建 PR。
 
 ```bash
@@ -149,6 +150,9 @@ PASS: 0 error(s), 1 warning(s)
 Release 附件和历史版本。
 
 ## 有 gh
+
+`preflight.py` 已经确认过 `gh` 可调用且已登录。如果它报告 `(不在 PATH)`，把命令里的
+`gh` 换成它给出的绝对路径。
 
 ```bash
 # 确认登录状态；不要把 token 打印或写入文件

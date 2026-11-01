@@ -85,6 +85,31 @@ python3 scripts/preflight.py \
 `--type` 取 `layout` / `plugin-v2` / `plugin-v1` / `rime` / `model`。缺少 `gh`、`uv`、
 `npx` 只记为提示，不阻止流程；缺少 Python、PyYAML 或仓库路径才是失败。
 
+### gh 探测
+
+`preflight.py` 会跨平台找 `gh`，并检查它是否可用：
+
+- 先查 `PATH`，再查常见安装目录：Windows 的 `%LOCALAPPDATA%\Programs\GitHub CLI`、
+  `%ProgramFiles%\GitHub CLI`、Scoop / Chocolatey / WinGet 的 shim；macOS 的
+  `/opt/homebrew/bin`、`/usr/local/bin`；Linux 的 `~/.local/bin`、`/usr/local/bin`、
+  `/snap/bin`、Linuxbrew、Nix。
+- 命中但不在 `PATH` 时输出 `(不在 PATH)`，后续调用用绝对路径。
+- 找到可执行文件后运行 `gh auth status --hostname github.com`，区分：已登录、未登录、
+  已登录但缺 scope、无法读取（超时/版本过旧）。输出只包含账号名和 scope，不含 token。
+
+看到以下结果时的处理：
+
+| 输出 | 做法 |
+|---|---|
+| `gh: (missing)` | 按平台给出安装命令，**先问用户要不要装**，不要自动安装 |
+| `gh: ... (不在 PATH)` | 用绝对路径调用；或提醒用户把目录加入 PATH |
+| `gh: 已安装但未登录` | 提示用户运行 `gh auth login`（交互式，由用户完成） |
+| `gh: token 缺少 scope: ...` | `repo` 缺失时提示 `gh auth refresh -h github.com -s repo`；其它 scope（如 `read:org`）与本流程无关，可忽略 |
+| `gh: 已登录` | 正常走 `gh pr create`；否则回退到 compare URL |
+
+`GH_TOKEN` / `GITHUB_TOKEN` 存在时 `gh` 会用它认证（`git push` 不会），输出中会标注；
+push 前仍需确认 git 凭据，失败就按「无 gh」的交接方式处理。
+
 **停止条件**：仓库不是 `xime-index`、`src/` 结构缺失、必需校验失败、规则漂移未解释。
 
 ## 阶段 1：分类
@@ -395,10 +420,11 @@ curl -s https://raw.githubusercontent.com/ximeiorg/xime-index/main/layouts/index
 
 | 脚本 | 何时运行 | 说明 |
 |---|---|---|
-| [preflight.py](scripts/preflight.py) | 阶段 0 | 检查仓库、工具、上游规则漂移；退出码 0/2/3 |
+| [preflight.py](scripts/preflight.py) | 阶段 0 | 检查仓库、工具（含跨平台 gh 探测与登录状态）、上游规则漂移；退出码 0/2/3 |
 | [asset_meta.py](scripts/asset_meta.py) | 阶段 3 | 下载附件，输出 `sha256`/`size`/`sizeBytes`；支持 `--expected-sha256`、`--json`、`--strict` |
 | [validate_entry.py](scripts/validate_entry.py) | 阶段 2/4/5 | 校验单条 YAML；布局 zip、插件 manifest、Rime schema；退出码 0/1/2/3 |
-| [lib.py](scripts/lib.py) | 内部 | 下载、哈希、URL 分类等共享实现；通常不直接运行 |
+| [lib.py](scripts/lib.py) | 内部 | 下载、哈希、URL 分类、网络受阻提示等共享实现 |
+| [tools.py](scripts/tools.py) | 内部 | 跨平台工具查找（PATH + 常见安装目录）、`gh auth status` 解析 |
 
 脚本只依赖 Python 标准库和 PyYAML；`gh`、`uv`、`npx` 可选。下载资产只用于计算哈希，
 不执行；zip 只读检查。不要用 `--no-verify` 代替提交前校验。

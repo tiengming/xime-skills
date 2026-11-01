@@ -15,11 +15,13 @@ sys.path.insert(0, str(SKILL_ROOT / "scripts"))
 
 from preflight import (  # noqa: E402
     RULE_FILES,
+    _gh_auth_notes,
     check_repo,
     check_rules,
     check_tools,
     main as preflight_main,
 )
+from tools import GhAuth, GhReport, ToolInfo  # noqa: E402
 
 DEFAULT_RULES = {
     "CONTRIBUTING.md": b"# contributing\n",
@@ -57,12 +59,21 @@ def fake_urlopen_factory(rules):
     return fake
 
 
-def all_tools(name):
+def all_tools(name, path=None):
     return f"/usr/bin/{name}"
 
 
-def optional_tools_missing(name):
+def optional_tools_missing(name, path=None):
     return None if name in {"gh", "uv", "npx"} else f"/usr/bin/{name}"
+
+
+@contextlib.contextmanager
+def patched_lookup(effect):
+    """Patch PATH lookup and disable OS fallback dirs (keeps tests hermetic)."""
+    with mock.patch("shutil.which", side_effect=effect), mock.patch(
+        "tools.default_search_dirs", return_value=[]
+    ):
+        yield
 
 
 class PreflightTest(unittest.TestCase):
@@ -92,7 +103,7 @@ class PreflightTest(unittest.TestCase):
         return repo
 
     def test_check_tools_marks_optional_missing(self):
-        with mock.patch("shutil.which", side_effect=optional_tools_missing):
+        with patched_lookup(optional_tools_missing):
             tools = check_tools()
         self.assertEqual(tools["python3"], "/usr/bin/python3")
         self.assertIsNone(tools["gh"])
@@ -101,7 +112,7 @@ class PreflightTest(unittest.TestCase):
     def test_complete_repo_without_optional_tools_exits_zero(self):
         repo = self.make_repo()
         out = io.StringIO()
-        with mock.patch("shutil.which", side_effect=optional_tools_missing):
+        with patched_lookup(optional_tools_missing):
             with contextlib.redirect_stdout(out):
                 rc = preflight_main(["--repo", str(repo)])
         self.assertEqual(rc, 0)
@@ -109,7 +120,7 @@ class PreflightTest(unittest.TestCase):
 
     def test_missing_src_exits_two(self):
         repo = self.make_repo(with_src=False)
-        with mock.patch("shutil.which", side_effect=all_tools):
+        with patched_lookup(all_tools):
             with contextlib.redirect_stdout(io.StringIO()):
                 rc = preflight_main(["--repo", str(repo)])
         self.assertEqual(rc, 2)
@@ -151,7 +162,7 @@ class PreflightTest(unittest.TestCase):
         out = io.StringIO()
         with mock.patch(
             "urllib.request.urlopen", side_effect=fake_urlopen_factory(changed)
-        ), mock.patch("shutil.which", side_effect=all_tools):
+        ), patched_lookup(all_tools):
             with contextlib.redirect_stdout(out):
                 rc = preflight_main(
                     [
@@ -199,13 +210,66 @@ class PreflightTest(unittest.TestCase):
     def test_missing_required_tool_is_error(self):
         repo = self.make_repo()
 
-        def which(name):
+        def which(name, path=None):
             return None if name == "git" else f"/usr/bin/{name}"
 
-        with mock.patch("shutil.which", side_effect=which):
+        with patched_lookup(which):
             with contextlib.redirect_stdout(io.StringIO()):
                 rc = preflight_main(["--repo", str(repo)])
         self.assertEqual(rc, 2)
+
+
+class GhNotesTest(unittest.TestCase):
+    def test_extra_scope_is_informational(self):
+        notes = _gh_auth_notes(
+            GhAuth(
+                state="authenticated",
+                account="tester",
+                scopes=("repo",),
+                missing_scopes=("read:org",),
+            )
+        )
+        self.assertTrue(any("已登录" in n for n in notes))
+        self.assertTrue(any("可忽略" in n for n in notes))
+        self.assertFalse(any("无法 push" in n for n in notes))
+
+    def test_missing_repo_scope_blocks_push(self):
+        notes = _gh_auth_notes(
+            GhAuth(
+                state="authenticated",
+                account="tester",
+                scopes=(),
+                missing_scopes=("repo",),
+            )
+        )
+        self.assertTrue(any("无法 push" in n for n in notes))
+        self.assertTrue(any("gh auth refresh" in n for n in notes))
+
+    def test_not_authenticated_asks_for_login(self):
+        notes = _gh_auth_notes(GhAuth(state="not-authenticated"))
+        self.assertTrue(any("gh auth login" in n for n in notes))
+
+    def test_unavailable_reports_detail(self):
+        notes = _gh_auth_notes(GhAuth(state="unavailable", detail="timeout"))
+        self.assertTrue(any("timeout" in n for n in notes))
+
+    def test_ready_requires_authenticated_and_repo_scope(self):
+        tool = ToolInfo(name="gh", path="/usr/bin/gh", source="PATH")
+        ready = GhReport(
+            tool=tool,
+            auth=GhAuth(state="authenticated", scopes=("repo",)),
+        )
+        self.assertTrue(ready.ready)
+        blocked = GhReport(
+            tool=tool,
+            auth=GhAuth(state="authenticated", missing_scopes=("repo",)),
+        )
+        self.assertFalse(blocked.ready)
+        informational = GhReport(
+            tool=tool,
+            auth=GhAuth(state="authenticated", missing_scopes=("read:org",)),
+        )
+        self.assertTrue(informational.ready)
 
 
 if __name__ == "__main__":

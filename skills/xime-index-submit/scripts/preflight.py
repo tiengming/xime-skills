@@ -15,7 +15,6 @@ import argparse
 import hashlib
 import json
 import re
-import shutil
 import sys
 import urllib.request
 from datetime import date
@@ -24,6 +23,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib import USER_AGENT, is_network_error, print_network_hint  # noqa: E402
+from tools import (  # noqa: E402
+    GhAuth,
+    ToolInfo,
+    check_gh_auth,
+    gh_install_hint,
+    resolve_tools,
+)
 
 UPSTREAM_REPO = "ximeiorg/xime-index"
 UPSTREAM_BRANCH = "main"
@@ -50,9 +56,48 @@ OPTIONAL_TOOL_HINTS = {
 }
 
 
-def check_tools() -> dict[str, str | None]:
+def check_tool_details(**kwargs) -> dict[str, ToolInfo]:
+    """Return path plus how each tool was found (PATH / fallback / missing)."""
+    return resolve_tools(tuple(TOOLS), **kwargs)
+
+
+def check_tools(**kwargs) -> dict[str, str | None]:
     """Return the resolved path (or None) for each expected tool."""
-    return {name: shutil.which(name) for name in TOOLS}
+    return {
+        name: info.path for name, info in check_tool_details(**kwargs).items()
+    }
+
+
+def _gh_auth_notes(auth: GhAuth) -> list[str]:
+    """Human-readable next steps for the current gh login state."""
+    if auth.state == "authenticated":
+        notes: list[str] = []
+        target = f"github.com 账号 {auth.account}" if auth.account else "github.com"
+        via = "（使用环境变量 GH_TOKEN/GITHUB_TOKEN）" if auth.via_env_token else ""
+        notes.append(f"已登录 {target}{via}")
+        if auth.missing_scopes:
+            blocking = [
+                scope for scope in auth.missing_scopes if scope in {"repo"}
+            ]
+            if blocking:
+                notes.append(
+                    "token 缺少 "
+                    + ", ".join(blocking)
+                    + " scope，无法 push / 开 PR；运行 gh auth refresh -h github.com -s "
+                    + blocking[0]
+                )
+            else:
+                notes.append(
+                    "gh 提示缺少 scope："
+                    + ", ".join(auth.missing_scopes)
+                    + "（与本流程无关，可忽略）"
+                )
+        return notes
+    if auth.state == "not-authenticated":
+        return ["已安装但未登录：运行 gh auth login（需要用户交互）"]
+    if auth.state == "unavailable":
+        return [f"无法读取登录状态：{auth.detail}"]
+    return []
 
 
 def _git_config_path(repo: Path) -> Path | None:
@@ -205,7 +250,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     repo = Path(args.repo)
-    tools = check_tools()
+    details = check_tool_details()
+    tools = {name: info.path for name, info in details.items()}
     errors, warnings = check_repo(repo)
 
     for tool in REQUIRED_TOOLS:
@@ -214,8 +260,26 @@ def main(argv: list[str] | None = None) -> int:
 
     notes: list[str] = []
     for tool, hint in OPTIONAL_TOOL_HINTS.items():
-        if not tools.get(tool):
+        if tool == "gh":
+            continue  # gh has extra state, handled below
+        if not details[tool].found:
             notes.append(f"未找到可选工具 {tool}（{hint}）")
+
+    gh_info = details["gh"]
+    gh_auth = check_gh_auth(gh_info.path)
+    gh_notes: list[str] = []
+    if gh_info.found:
+        if not gh_info.on_path:
+            gh_notes.append(
+                f"不在 PATH：{gh_info.path}（调用时用绝对路径，或把该目录加入 PATH）"
+            )
+        gh_notes.extend(_gh_auth_notes(gh_auth))
+    else:
+        gh_notes.append(
+            f"未找到（{OPTIONAL_TOOL_HINTS['gh']}）。安装方式：{gh_install_hint()}；"
+            "也可从 https://github.com/cli/cli/releases 下载。"
+            "是否安装请先询问用户，不要自动安装。"
+        )
 
     if args.check_rules or args.write_lock:
         rule_errors, rule_warnings = check_rules(
@@ -232,6 +296,16 @@ def main(argv: list[str] | None = None) -> int:
         "repo": str(repo),
         "type": args.type,
         "tools": tools,
+        "gh": {
+            "path": gh_info.path,
+            "source": gh_info.source,
+            "state": gh_auth.state,
+            "account": gh_auth.account,
+            "scopes": list(gh_auth.scopes),
+            "missingScopes": list(gh_auth.missing_scopes),
+            "viaEnvToken": gh_auth.via_env_token,
+            "notes": gh_notes,
+        },
         "errors": errors,
         "warnings": warnings,
         "notes": notes,
@@ -245,7 +319,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"type: {args.type}")
         print("tools:")
         for tool in TOOLS:
-            print(f"  {tool}: {tools.get(tool) or '(missing)'}")
+            info = details[tool]
+            if info.found and not info.on_path:
+                print(f"  {tool}: {info.path} (不在 PATH)")
+            else:
+                print(f"  {tool}: {info.path or '(missing)'}")
+        for note in gh_notes:
+            print(f"gh:      {note}")
         for note in notes:
             print(f"note:    {note}")
         for warning in warnings:
