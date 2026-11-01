@@ -162,6 +162,9 @@ python3 scripts/validate_entry.py src/rimes/<id>.yaml \
   --schema ./my_schema.schema.yaml
 ```
 
+`--schema` 会读取标准写法 `schema:` 段内的 `schema_id`（也兼容顶层 `schema_id`），
+与索引 `id` 不一致时直接报错。
+
 ## 常见错误
 
 | 现象 | 原因 | 修复 |

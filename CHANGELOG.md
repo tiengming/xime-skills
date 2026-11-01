@@ -6,6 +6,8 @@
   / `network_hint`，`asset_meta.py`、`preflight.py --check-rules`、
   `validate_entry.py --check-urls` 在 DNS/连接/超时/TLS 失败时打印代理提示（只列
   环境变量名，不打印值），并在技能文档中要求先询问用户是否使用代理。
+- 修复 `validate_entry.py` 只认顶层 `schema_id` 的问题：标准 Rime 方案把 `schema_id`
+  写在 `schema:` 段内，现在顶层与 `schema.schema_id` 两种写法都会识别。
 
 ## v0.1.0 - 2026-10-29
 

@@ -692,12 +692,32 @@ def validate_rime(
     except (OSError, yaml.YAMLError) as exc:
         report.errors.append(f"无法解析 schema 文件: {exc}")
         return
-    if not isinstance(schema, dict) or not schema.get("schema_id"):
-        report.errors.append("schema 文件缺少 schema_id")
-    elif str(schema["schema_id"]) != report.id:
+    schema_id = _rime_schema_id(schema)
+    if not schema_id:
         report.errors.append(
-            f"schema_id 与 id 不一致: {schema['schema_id']!r} != {report.id!r}"
+            "schema 文件缺少 schema_id（顶层与 schema: 段内都没有）"
         )
+    elif str(schema_id) != report.id:
+        report.errors.append(
+            f"schema_id 与 id 不一致: {schema_id!r} != {report.id!r}"
+        )
+
+
+def _rime_schema_id(schema: Any) -> Any:
+    """从 Rime 方案文件里取 schema_id。
+
+    标准方案把它写在 ``schema:`` 段内（``schema.schema_id``），
+    也兼容把 ``schema_id`` 直接放在顶层的最小文件。
+    """
+    if not isinstance(schema, dict):
+        return None
+    schema_id = schema.get("schema_id")
+    if schema_id:
+        return schema_id
+    nested = schema.get("schema")
+    if isinstance(nested, dict):
+        return nested.get("schema_id")
+    return None
 
 
 def _check_size_bytes(
