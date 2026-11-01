@@ -1,3 +1,4 @@
+import contextlib
 import socket
 import subprocess
 import threading
@@ -10,15 +11,20 @@ SKILL_ROOT = Path(__file__).resolve().parents[1] / "skills" / "xime-index-submit
 ASSET_BYTES = b"xime" * 1000
 
 
-def closed_port_url(path="/asset.bin"):
-    """Return a localhost URL whose port is closed (connection refused)."""
+@contextlib.contextmanager
+def refused_url(path="/asset.bin"):
+    """Yield a localhost URL that always refuses connections.
+
+    The socket stays bound (but never listens) for the duration of the block,
+    so no other process can grab the port and make the test flaky.
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
     try:
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
+        yield f"http://127.0.0.1:{port}{path}"
     finally:
         sock.close()
-    return f"http://127.0.0.1:{port}{path}"
 
 
 def run_cli(args, cwd=None):

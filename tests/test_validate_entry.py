@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from tests.helpers import HTTPFixture, SKILL_ROOT, closed_port_url
+from tests.helpers import HTTPFixture, SKILL_ROOT, refused_url
 
 sys.path.insert(0, str(SKILL_ROOT / "scripts"))
 
@@ -599,11 +599,13 @@ class RimeValidationTest(unittest.TestCase):
 
     def test_check_urls_network_failure_suggests_proxy(self):
         data = rime_data()
-        data["versions"][0]["downloadUrl"][0]["url"] = closed_port_url()
         path = self.write(data)
         err = io.StringIO()
-        with contextlib.redirect_stderr(err):
-            report = validate(path, repo_root=self.root, check_urls=True)
+        with refused_url() as url:
+            data["versions"][0]["downloadUrl"][0]["url"] = url
+            path = self.write(data)
+            with contextlib.redirect_stderr(err):
+                report = validate(path, repo_root=self.root, check_urls=True)
         self.assertTrue(any("网络错误" in w for w in report.warnings))
         self.assertIn("代理", err.getvalue())
 

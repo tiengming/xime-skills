@@ -4,7 +4,7 @@ import io
 import sys
 import unittest
 
-from tests.helpers import HTTPFixture, SKILL_ROOT, closed_port_url
+from tests.helpers import HTTPFixture, SKILL_ROOT, refused_url
 
 sys.path.insert(0, str(SKILL_ROOT / "scripts"))
 
@@ -90,8 +90,8 @@ class AssetMetaTest(unittest.TestCase):
 
     def test_network_error_suggests_proxy(self):
         err = io.StringIO()
-        with contextlib.redirect_stderr(err):
-            rc = asset_main([closed_port_url(), "--timeout", "3"])
+        with refused_url() as url, contextlib.redirect_stderr(err):
+            rc = asset_main([url, "--timeout", "3"])
         self.assertEqual(rc, 2)
         self.assertIn("代理", err.getvalue())
 
