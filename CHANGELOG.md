@@ -1,5 +1,17 @@
 # Changelog
 
+## 未发布
+
+- 增强 `gh` 探测，照顾 Windows / macOS / Linux：`preflight.py` 先查 `PATH`，再查常见
+  安装目录（`%LOCALAPPDATA%\Programs\GitHub CLI`、`%ProgramFiles%`、Scoop/Chocolatey/
+  WinGet shim、`/opt/homebrew/bin`、`~/.local/bin`、`/snap/bin` 等），命中但不在
+  `PATH` 时标注 `(不在 PATH)`。
+- 新增 `tools.py`：区分「未安装 / 已安装未登录 / 已登录但缺 scope / 状态不可读」，
+  解析 `gh auth status` 时只提取账号名与 scope，不输出 token；`gh` 版本过旧不支持
+  `--hostname` 时自动回退。
+- 缺失 `gh` 时按平台给出安装命令（winget/scoop、brew、apt/dnf/pacman），并明确
+  由用户决定是否安装；`--json` 新增 `gh` 字段。
+
 ## v0.2.0 - 2026-11-01
 
 - 网络受阻时主动提示代理：`lib.py` 新增 `is_network_error` / `is_network_error_text`
