@@ -1,6 +1,6 @@
 # Changelog
 
-## 未发布
+## v0.3.0 - 2026-11-01
 
 - 增强 `gh` 探测，照顾 Windows / macOS / Linux：`preflight.py` 先查 `PATH`，再查常见
   安装目录（`%LOCALAPPDATA%\Programs\GitHub CLI`、`%ProgramFiles%`、Scoop/Chocolatey/
