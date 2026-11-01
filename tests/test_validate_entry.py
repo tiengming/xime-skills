@@ -579,6 +579,24 @@ class RimeValidationTest(unittest.TestCase):
         report = self.run_validate(data, schema=schema)
         self.assertTrue(any("schema_id" in e for e in report.errors))
 
+    def test_nested_schema_id_is_accepted(self):
+        data = rime_data()
+        schema = {"schema": {"schema_id": data["id"], "name": "Demo Schema"}}
+        report = self.run_validate(data, schema=schema)
+        self.assertEqual(report.errors, [])
+
+    def test_nested_schema_id_mismatch(self):
+        data = rime_data()
+        schema = {"schema": {"schema_id": "other_schema"}}
+        report = self.run_validate(data, schema=schema)
+        self.assertTrue(any("schema_id" in e for e in report.errors))
+
+    def test_nested_schema_without_schema_id(self):
+        data = rime_data()
+        schema = {"schema": {"name": "Demo Schema"}}
+        report = self.run_validate(data, schema=schema)
+        self.assertTrue(any("schema_id" in e for e in report.errors))
+
     def test_dependencies_must_be_list(self):
         data = rime_data()
         data["dependencies"] = "demo_dep"

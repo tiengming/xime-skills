@@ -1,5 +1,10 @@
 # Changelog
 
+## 未发布
+
+- 修复 `validate_entry.py` 只认顶层 `schema_id` 的问题：标准 Rime 方案把 `schema_id`
+  写在 `schema:` 段内，现在顶层与 `schema.schema_id` 两种写法都会识别。
+
 ## v0.1.0 - 2026-10-29
 
 - 新增 `xime-index-submit` 技能，覆盖布局/配色、插件 v2、旧版插件 v1、输入方案、模型五类条目。
