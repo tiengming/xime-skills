@@ -140,6 +140,9 @@ python3 scripts/validate_entry.py /path/to/xime-index/src/<type>/<id>.yaml \
 `validate_entry.py --asset-file` 会在阶段 5 做完整的 zip 路径安全、扩展名和符号链接检查，
 `unzip -l` 只是初查。
 
+本阶段的 `asset_meta.py` 只用于初查。写入条目的 `sha256`/`size` 必须来自阶段 3 对实际
+`downloadUrl` 的下载结果；本地构建产物只能用来交叉比对，不能直接当作发布值。
+
 类型要点：
 
 | 类型 | 必须确认 |
@@ -159,8 +162,9 @@ python3 scripts/validate_entry.py /path/to/xime-index/src/<type>/<id>.yaml \
 ## 阶段 3：发布与取数
 
 - [ ] 确认交付物已上传为 **GitHub Release 附件**；分支、raw、`@main` 的 jsDelivr 都不行。
-- [ ] 下载附件，计算 `sha256`、`size`、`sizeBytes`。
-- [ ] 与作者提供的值比对；不一致时以实际附件为准并说明。
+- [ ] **下载 `downloadUrl` 指向的实际附件**，计算 `sha256`、`size`、`sizeBytes`。
+- [ ] 本地构建文件只用于交叉比对；不得用本地哈希代替附件哈希。
+- [ ] 与作者提供的值比对；不一致时先停下确认上传的附件是否正确，再决定写入哪个值。
 - [ ] 记录 URL、版本、日期、changelog，供阶段 4 写入。
 
 ```bash
@@ -176,6 +180,9 @@ python3 scripts/asset_meta.py "<downloadUrl>" --expected-sha256 "<64 位十六�
 
 `.gram` 在 `downloadUrl` 中允许 `sha256: ""`，其它文件必须填。模型 `files[]` 没有这个
 例外，能算就算。`sizeBytes` 用实际字节数，不要用 `size` 字符串反推。
+
+下载失败、代理不可用或无法访问附件时，停止并说明。不要假设本地文件就是远端内容，
+也不要把“本地算过哈希”说成“已验证发布附件”。
 
 **停止条件**：附件不可下载、URL 可变、sha256 与作者值不一致且未解释、把分支地址当发布地址。
 
@@ -193,6 +200,12 @@ cp templates/layout.yaml /path/to/xime-index/src/layouts/<id>.yaml
 
 模板：`layout.yaml`、`plugin-v2.yaml`、`plugin-v1.yaml`、`rime.yaml`、`model.yaml`。
 字段含义以对应 reference 为准；模板里的空值必须替换成实际值。
+
+缺少 `license`、`author`、`repo`、截图等无法从产物推断的字段时，向用户确认。
+不要填 `MIT` 之类的常见默认值，也不要编造仓库地址或作者名。
+
+版本更新时，新内容必须使用新 tag + 新 Release。下载地址保持不变不能作为复用旧 tag
+的理由；现有 URL 只属于已经发布的旧版本，覆盖它会让旧版本的哈希失效。
 
 更新版本时：
 
@@ -316,6 +329,7 @@ curl -s https://raw.githubusercontent.com/ximeiorg/xime-index/main/layouts/index
 | 删除分支 / tag / Release / 资产 | 停止 | 单独确认，说明不可逆影响 |
 | 安装 `gh` / `uv` / `xipm` 等工具 | 停止 | 先问用户；不运行来源不明的安装脚本 |
 | 合并 PR | 禁止 | 由维护者执行；本技能不代劳 |
+| 跳过校验或伪造校验结果 | 禁止 | 校验不是可协商项；push 可以同意，校验不能跳过。用户坚持时说明后果并停止 |
 | 读取/写入 token | 禁止 | 不打印、不落盘、不写进命令历史或 YAML |
 
 ## 红线
@@ -332,6 +346,11 @@ curl -s https://raw.githubusercontent.com/ximeiorg/xime-index/main/layouts/index
 | “截图差不多就行” | 必须是曦码键盘真实效果，分支 URL 会被拒 | 按截图规范重拍，钉 tag/commit |
 | “规则漂移先不管” | 可能按过期规则生成条目 | 先读上游 diff，更新技能或确认无影响 |
 | “合并后直接改 main 修一下” | 绕过 PR 和校验，可能破坏索引 | 新开分支和 PR |
+| “本地文件已经算过 hash” | 用户下载的是 Release 附件，不是本地文件；上传失败或传错就全错 | 阶段 3 下载实际 URL，与本地值比对 |
+| “用户说跳过检查，先 push” | 同意 push 不等于同意跳过校验；坏条目会影响所有用户 | 说明缺失项和风险；未通过校验不 push |
+| “License/作者不知道，先填 MIT/tester” | 错误的授权声明会造成法律和信任问题 | 停下向作者确认；不确定就不提交 |
+| “URL 不变，直接换文件” | 同 tag 覆盖会让旧版本哈希失效，违反发布规则 | 新版本用新 tag + 新 Release，保留旧附件 |
+| “网络不通，先按本地值填” | 未验证的值会在 CI 或客户端暴露，你也无法声称已验证 | 停止并说明；等网络恢复或让作者提供官方哈希 |
 
 不要运行作者仓库里的脚本，不要把下载的插件/布局当代码执行；只调用本技能脚本和
 `xime-index` 的官方脚本。
