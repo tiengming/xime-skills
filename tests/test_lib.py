@@ -45,10 +45,10 @@ class NetworkHintTest(unittest.TestCase):
     def test_hint_suggests_proxy_when_unset(self):
         with mock.patch.dict(os.environ, {}, clear=True):
             text = network_hint("Connection refused")
+            self.assertEqual(proxy_env_names(), [])
         self.assertIn("代理", text)
         self.assertIn("https_proxy", text)
         self.assertIn("Connection refused", text)
-        self.assertEqual(proxy_env_names(), [])
 
     def test_hint_acknowledges_existing_proxy(self):
         env = {"https_proxy": "http://127.0.0.1:7890"}
