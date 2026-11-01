@@ -4,7 +4,7 @@ import io
 import sys
 import unittest
 
-from tests.helpers import HTTPFixture, SKILL_ROOT
+from tests.helpers import HTTPFixture, SKILL_ROOT, closed_port_url
 
 sys.path.insert(0, str(SKILL_ROOT / "scripts"))
 
@@ -87,6 +87,13 @@ class AssetMetaTest(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()):
             rc = asset_main([f"{self.base}/slow", "--timeout", "1"])
         self.assertEqual(rc, 2)
+
+    def test_network_error_suggests_proxy(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            rc = asset_main([closed_port_url(), "--timeout", "3"])
+        self.assertEqual(rc, 2)
+        self.assertIn("代理", err.getvalue())
 
     def test_expected_sha_mismatch_returns_4(self):
         with contextlib.redirect_stderr(io.StringIO()):

@@ -1,5 +1,12 @@
 # Changelog
 
+## 未发布
+
+- 网络受阻时主动提示代理：`lib.py` 新增 `is_network_error` / `is_network_error_text`
+  / `network_hint`，`asset_meta.py`、`preflight.py --check-rules`、
+  `validate_entry.py --check-urls` 在 DNS/连接/超时/TLS 失败时打印代理提示（只列
+  环境变量名，不打印值），并在技能文档中要求先询问用户是否使用代理。
+
 ## v0.1.0 - 2026-10-29
 
 - 新增 `xime-index-submit` 技能，覆盖布局/配色、插件 v2、旧版插件 v1、输入方案、模型五类条目。

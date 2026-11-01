@@ -16,7 +16,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib import DownloadError, classify_url, download, human_size  # noqa: E402
+from lib import (  # noqa: E402
+    DownloadError,
+    classify_url,
+    download,
+    human_size,
+    is_network_error,
+    print_network_hint,
+)
 
 
 def build_meta(url: str, timeout: int = 300) -> dict:
@@ -60,6 +67,8 @@ def main(argv: list[str] | None = None) -> int:
         meta = build_meta(args.url, timeout=args.timeout)
     except DownloadError as exc:
         print(f"error: 下载失败: {exc}", file=sys.stderr)
+        if is_network_error(exc):
+            print_network_hint(str(exc))
         return 2
 
     if args.expected_sha256:

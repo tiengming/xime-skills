@@ -6,14 +6,48 @@ installing anything beyond PyYAML for the YAML-facing commands.
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import os
 import re
+import socket
+import ssl
+import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
 USER_AGENT = "Xime-Skill-Checksum/1.0"
+
+_PROXY_ENV_VARS = (
+    "https_proxy",
+    "HTTPS_PROXY",
+    "http_proxy",
+    "HTTP_PROXY",
+    "all_proxy",
+    "ALL_PROXY",
+)
+
+_NETWORK_ERROR_TEXT = (
+    "timed out",
+    "timeout",
+    "connection refused",
+    "connection reset",
+    "connection aborted",
+    "network is unreachable",
+    "no route to host",
+    "name or service not known",
+    "temporary failure in name resolution",
+    "nodename nor servname",
+    "getaddrinfo",
+    "ssl",
+    "tls",
+    "unexpected eof",
+    "remote end closed",
+    "certificate verify failed",
+    "broken pipe",
+)
 
 _HEX_RE = re.compile(r"^[0-9a-f]{7,40}$", re.IGNORECASE)
 _BRANCH_NAMES = {"main", "master", "develop", "dev", "trunk", "head"}
@@ -21,6 +55,78 @@ _BRANCH_NAMES = {"main", "master", "develop", "dev", "trunk", "head"}
 
 class DownloadError(RuntimeError):
     """Raised when an asset cannot be downloaded or read."""
+
+
+def proxy_env_names() -> list[str]:
+    """Return the proxy environment variables that are currently set."""
+    return [name for name in _PROXY_ENV_VARS if os.environ.get(name)]
+
+
+def is_network_error_text(text: str | None) -> bool:
+    """Heuristically decide whether an error message means the network failed."""
+    if not text:
+        return False
+    lowered = text.lower()
+    return any(marker in lowered for marker in _NETWORK_ERROR_TEXT)
+
+
+def is_network_error(exc: BaseException | None) -> bool:
+    """Heuristically decide whether *exc* means the network itself failed."""
+    if exc is None:
+        return False
+    if isinstance(exc, urllib.error.HTTPError):
+        return False  # the server answered, so connectivity is fine
+    if isinstance(
+        exc,
+        (
+            urllib.error.URLError,
+            socket.gaierror,
+            socket.timeout,
+            ssl.SSLError,
+            TimeoutError,
+            ConnectionError,
+        ),
+    ):
+        return True
+    if isinstance(exc, OSError) and exc.errno in {
+        errno.ENETUNREACH,
+        errno.EHOSTUNREACH,
+        errno.ECONNREFUSED,
+        errno.ECONNRESET,
+        errno.ETIMEDOUT,
+        errno.EPIPE,
+    }:
+        return True
+    if isinstance(exc, DownloadError) and exc.__cause__ is not None:
+        return is_network_error(exc.__cause__)
+    return is_network_error_text(str(exc))
+
+
+def network_hint(detail: str | None = None) -> str:
+    """Build the hint shown when the network looks blocked."""
+    lines = ["提示：网络请求失败，疑似网络受阻（DNS / 连接 / 超时 / TLS）。"]
+    if detail:
+        lines.append(f"  原因：{detail}")
+    proxies = proxy_env_names()
+    if proxies:
+        lines.append(
+            f"  已检测到代理环境变量 {', '.join(proxies)}："
+            "若仍然失败，请确认代理地址和端口是否可用。"
+        )
+    else:
+        lines.append("  如果当前网络需要代理，请先设置再重试，例如：")
+        lines.append("    export https_proxy=http://127.0.0.1:7890")
+        lines.append("    export http_proxy=http://127.0.0.1:7890")
+    lines.append(
+        "  请先询问用户是否需要代理，不要自行假设代理地址；"
+        "技能不会读取或保存任何 token。"
+    )
+    return "\n".join(lines)
+
+
+def print_network_hint(detail: str | None = None) -> None:
+    """Print :func:`network_hint` to stderr so the operator/agent sees it."""
+    print(network_hint(detail), file=sys.stderr)
 
 
 def human_size(n: int) -> str:
