@@ -86,6 +86,21 @@ class SkillWorkflowTest(unittest.TestCase):
             "SKILL.md still contains a placeholder marker",
         )
 
+    def test_red_lines_cover_pressure_traps(self):
+        traps = [
+            "本地文件已经算过 hash",
+            "用户说跳过检查",
+            "License/作者不知道",
+            "URL 不变",
+            "网络不通",
+            "强推一下让历史干净",
+            "维护者说先跳过 sha256",
+            "布局和插件一起",
+        ]
+        for trap in traps:
+            with self.subTest(trap=trap):
+                self.assertIn(trap, self.text)
+
 
 class TemplateTest(unittest.TestCase):
     TYPE_FIELDS = {
