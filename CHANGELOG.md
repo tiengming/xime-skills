@@ -1,6 +1,6 @@
 # Changelog
 
-## 未发布
+## v0.2.0 - 2026-11-01
 
 - 网络受阻时主动提示代理：`lib.py` 新增 `is_network_error` / `is_network_error_text`
   / `network_hint`，`asset_meta.py`、`preflight.py --check-rules`、
