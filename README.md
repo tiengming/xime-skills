@@ -55,6 +55,26 @@ https://github.com/ximeiorg/xime-index/compare/main...<你的用户名>:<分支>
 
 你在浏览器中确认并创建 PR。
 
+## 开发与测试
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+CI 配置在 `.github/workflows/validate.yml`，在 Python 3.10 / 3.12 上运行全部测试，并检查
+`SKILL.md` 的 frontmatter 与相对链接。上游规则快照由
+`skills/xime-index-submit/references/upstream.lock.json` 固定。
+
+技能行为经过三轮压力测试，记录在：
+
+- [基线（无技能）](docs/skill-testing/2026-10-29-baseline.md)
+- [GREEN（加载技能）](docs/skill-testing/2026-10-29-green.md)
+- [REFACTOR（组合压力）](docs/skill-testing/2026-10-29-refactor.md)
+
+真实仓库上的校验流程见 [端到端 dry run](docs/e2e-dry-run.md)。注意：当前上游
+`ci-update.py --check` 会因既有条目缺校验值而退出 1，这不是新条目引起的；不要为变绿
+修改生成索引或伪造哈希。
+
 ## License
 
 CC BY-NC-SA 4.0，与 `xime-index` 保持一致。

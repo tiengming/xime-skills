@@ -86,6 +86,20 @@ class SkillWorkflowTest(unittest.TestCase):
             "SKILL.md still contains a placeholder marker",
         )
 
+    def test_relative_markdown_links_resolve(self):
+        for target in re.findall(r"\[[^\]]+\]\(([^)]+)\)", self.text):
+            target = target.strip()
+            if target.startswith(("http://", "https://", "mailto:", "#")):
+                continue
+            relative = target.split("#", 1)[0]
+            if not relative:
+                continue
+            resolved = (SKILL_ROOT / relative).resolve()
+            self.assertTrue(
+                resolved.exists(),
+                f"SKILL.md: broken relative link {target!r}",
+            )
+
     def test_red_lines_cover_pressure_traps(self):
         traps = [
             "本地文件已经算过 hash",
